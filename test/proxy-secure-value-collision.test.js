@@ -3,6 +3,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const vm = require('vm');
+const cookieTools = require('cookie');
 
 const testName = 'proxy-secure-value-collision';
 const outputDir = process.env.ALEXA_COOKIE_TEST_OUTPUT_DIR || path.join(__dirname, '..', 'test-output');
@@ -132,15 +133,22 @@ try {
         proxyLogLevel: 'silent',
         formerDataStorePath
     };
-    proxyModule.initAmazonProxy(input, () => {});
+    let callbackData;
+    proxyModule.initAmazonProxy(input, (_err, data) => {
+        callbackData = data;
+    });
 
-    // `session-token` value CONTAINS the literal substring "Secure" — the naive
-    // `.replace('Secure', '')` used before this fix strips it out of the VALUE
-    // (the first match String#replace finds), corrupting the token, while the
-    // real `; Secure` attribute two cookies down goes untouched.
+    // The old replacement could corrupt a value containing "Secure". Stripping
+    // the attribute must also leave cookies available to the login callback,
+    // including when no attributes remain after rewriting the response header.
     const setCookieValues = [
         'session-token=abcSecure123xyz; Path=/; Domain=.amazon.de',
-        'ubid-acbde=UBID_VALUE; Path=/; Domain=.amazon.de; Secure; SameSite=None'
+        'ubid-acbde=UBID_VALUE; Path=/; Domain=.amazon.de; Secure; SameSite=None',
+        'session-id=SID_ONLY_SECURE; Secure',
+        'x-no-attributes=VALUE==',
+        'x-combined=SecureVALUE; Path=/; \tSeCuRe \t; HttpOnly',
+        'x-Secure=NAME_VALUE;Secure',
+        'x-empty=; Secure'
     ];
     const proxyRes = createProxyResponse(setCookieValues);
     const req = {
@@ -169,6 +177,28 @@ try {
     });
     recordAssertion('ubid cookie really loses its Secure attribute', () => {
         assert.strictEqual(proxyRes.headers['set-cookie'][1], 'ubid-acbde=UBID_VALUE; Path=/; Domain=.amazon.de; SameSite=None');
+    });
+    recordAssertion('cookie with only Secure attribute has the expected response header', () => {
+        assert.strictEqual(proxyRes.headers['set-cookie'][2], 'session-id=SID_ONLY_SECURE');
+    });
+    recordAssertion('cookie with only Secure attribute is retained in loginCookie', () => {
+        assert.strictEqual(cookieTools.parse(callbackData.loginCookie)['session-id'], 'SID_ONLY_SECURE');
+    });
+    recordAssertion('cookie without attributes keeps equals signs in its value', () => {
+        assert.strictEqual(proxyRes.headers['set-cookie'][3], 'x-no-attributes=VALUE==');
+        assert.strictEqual(cookieTools.parse(callbackData.loginCookie)['x-no-attributes'], 'VALUE==');
+    });
+    recordAssertion('mixed-case Secure attribute is removed without changing a colliding value', () => {
+        assert.strictEqual(proxyRes.headers['set-cookie'][4], 'x-combined=SecureVALUE; Path=/; HttpOnly');
+        assert.strictEqual(cookieTools.parse(callbackData.loginCookie)['x-combined'], 'SecureVALUE');
+    });
+    recordAssertion('Secure text in the cookie name survives attribute removal and collection', () => {
+        assert.strictEqual(proxyRes.headers['set-cookie'][5], 'x-Secure=NAME_VALUE');
+        assert.strictEqual(cookieTools.parse(callbackData.loginCookie)['x-Secure'], 'NAME_VALUE');
+    });
+    recordAssertion('empty cookie values remain excluded from the collected cookies', () => {
+        assert.strictEqual(proxyRes.headers['set-cookie'][6], 'x-empty=');
+        assert.strictEqual(Object.prototype.hasOwnProperty.call(cookieTools.parse(callbackData.loginCookie), 'x-empty'), false);
     });
     line('');
     line('RESULT: PASS');
