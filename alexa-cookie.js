@@ -885,6 +885,22 @@ function AlexaCookie() {
      */
     this.handleTokenRegistration = (options, loginData, callback) => handleTokenRegistration(options, loginData, callback);
 
+    /**
+     * Espone anche `initConfig` (stessa motivazione di `handleTokenRegistration`
+     * sopra): applica gli stessi default (baseAmazonPageHandle, deviceAppName,
+     * acceptLanguage, amazonPageProxyLanguage, userAgent…) che il proxy usa per
+     * costruire l'URL di signin PKCE — un chiamante esterno non deve
+     * duplicarli a mano e rischiare di disallinearsi quando cambiano qui.
+     * Muta `options` in place, come fa internamente.
+     */
+    this.initConfig = (options) => {
+        const savedOptions = _options;
+        _options = options;
+        initConfig();
+        _options = savedOptions;
+        return options;
+    };
+
     this.stopProxyServer = (callback) => {
         if (proxyServer) {
             proxyServer.close(() => {
