@@ -94,7 +94,10 @@ function createProxyResponse(location) {
         statusCode: 200,
         headers: {
             location,
-            'set-cookie': ['session-id=SID_PROXY; Path=/; Domain=.amazon.de; Secure; SameSite=None']
+            'set-cookie': [
+                'session-id=SID_PROXY; Path=/; Domain=.amazon.de; Secure; SameSite=None',
+                'session-id-time=SID_ONLY_SECURE; Secure'
+            ]
         },
         socket: {
             _host: 'www.amazon.de',
@@ -188,16 +191,16 @@ try {
     line(`proxyHttps=true set-cookie: ${httpsResult.proxyRes.headers['set-cookie'][0]}`);
     line('');
     line('ASSERTIONS:');
-    recordAssertion('default (proxyHttps unset) redirects with http scheme, unchanged behaviour', () => {
+    recordAssertion('proxyHttps=false redirects with http scheme', () => {
         assert.strictEqual(httpResult.proxyRes.headers.location, 'http://127.0.0.1:3456/cookie-success');
     });
-    recordAssertion('default (proxyHttps unset) strips Secure so cookie reaches a plain-http browser', () => {
+    recordAssertion('proxyHttps=false strips Secure from the response cookie', () => {
         assert.ok(!httpResult.proxyRes.headers['set-cookie'][0].includes('Secure'));
     });
     recordAssertion('proxyHttps=true redirects with https scheme', () => {
         assert.strictEqual(httpsResult.proxyRes.headers.location, 'https://127.0.0.1:3456/cookie-success');
     });
-    recordAssertion('proxyHttps=true preserves Secure so SameSite=None cookies are accepted by the browser', () => {
+    recordAssertion('proxyHttps=true preserves Secure on the SameSite=None cookie', () => {
         assert.ok(httpsResult.proxyRes.headers['set-cookie'][0].includes('Secure'));
     });
     recordAssertion('proxyHttps=true does not otherwise change the cookie value', () => {
@@ -207,8 +210,16 @@ try {
         );
     });
     recordAssertion('both scenarios still capture the proxied cookie in the callback', () => {
-        assert.ok(parseCookies(httpResult.callbackData.loginCookie)['session-id']);
-        assert.ok(parseCookies(httpsResult.callbackData.loginCookie)['session-id']);
+        assert.strictEqual(parseCookies(httpResult.callbackData.loginCookie)['session-id'], 'SID_PROXY');
+        assert.strictEqual(parseCookies(httpsResult.callbackData.loginCookie)['session-id'], 'SID_PROXY');
+    });
+    recordAssertion('proxyHttps=false captures a cookie after removing its only attribute', () => {
+        assert.strictEqual(httpResult.proxyRes.headers['set-cookie'][1], 'session-id-time=SID_ONLY_SECURE');
+        assert.strictEqual(parseCookies(httpResult.callbackData.loginCookie)['session-id-time'], 'SID_ONLY_SECURE');
+    });
+    recordAssertion('proxyHttps=true preserves a cookie with only the Secure attribute', () => {
+        assert.strictEqual(httpsResult.proxyRes.headers['set-cookie'][1], 'session-id-time=SID_ONLY_SECURE; Secure');
+        assert.strictEqual(parseCookies(httpsResult.callbackData.loginCookie)['session-id-time'], 'SID_ONLY_SECURE');
     });
     line('');
     line('RESULT: PASS');
