@@ -875,6 +875,16 @@ function AlexaCookie() {
         });
     };
 
+    /**
+     * Espone `handleTokenRegistration` (altrimenti privata alla closure) per i
+     * flussi di login che NON passano da `initAmazonProxy` — es. un browser
+     * headless pilotato da fuori (Camoufox) che ha già ottenuto `loginCookie` +
+     * `authorization_code` navigando Amazon per conto proprio. Fa lo stesso
+     * scambio OAuth (device registration + token) che i due path interni
+     * (proxy e login diretto via `request()`) fanno dopo `getCSRFFromCookies`.
+     */
+    this.handleTokenRegistration = (options, loginData, callback) => handleTokenRegistration(options, loginData, callback);
+
     this.stopProxyServer = (callback) => {
         if (proxyServer) {
             proxyServer.close(() => {
