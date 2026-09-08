@@ -891,13 +891,21 @@ function AlexaCookie() {
      * acceptLanguage, amazonPageProxyLanguage, userAgent…) che il proxy usa per
      * costruire l'URL di signin PKCE — un chiamante esterno non deve
      * duplicarli a mano e rischiare di disallinearsi quando cambiano qui.
-     * Muta `options` in place, come fa internamente.
+     *
+     * NON ripristina `_options` al valore precedente (a differenza di una prima
+     * versione di questa patch): `_options` è il singleton di modulo che
+     * `handleTokenRegistration` stesso usa per le chiamate successive
+     * (`registerTokenCapabilities`, `getLocalCookies` leggono `_options`
+     * direttamente, non un parametro) — lo stesso pattern non-transazionale
+     * già usato internamente alle righe 794-797. Un chiamante esterno deve
+     * quindi invocare `initConfig(options)` e poi passare lo STESSO `options`
+     * a `handleTokenRegistration` nella stessa sequenza sincrona, prima che
+     * un altro flusso (es. il refresh cookie di un'istanza AlexaRemote già
+     * connessa) rimetta `_options` sul proprio valore.
      */
     this.initConfig = (options) => {
-        const savedOptions = _options;
         _options = options;
         initConfig();
-        _options = savedOptions;
         return options;
     };
 
